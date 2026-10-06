@@ -1,0 +1,1 @@
+-n 1 -t 5 -N 1000 -F 1048576 --exit_upon_crash

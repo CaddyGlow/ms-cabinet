@@ -1,0 +1,221 @@
+[
+  {
+    "cab": "quantum-10.cab",
+    "sha256": "34a9602a54462780fddcfc5ff0a1e9ca92dfe4fb373592eaf78bbedc4e7aa951",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-11.cab",
+    "sha256": "87ff1d033ad872a8b2b24d038d33e87b2ec72a975be4218f6ce85041e4af43e9",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-12.cab",
+    "sha256": "794c612cc3ed7d51c06c49d941d76031d704badb5ff1626736c793397abf2aea",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-13.cab",
+    "sha256": "b075eb58b2ee954822719657104073f58f750c12ae46485fd867c00a395d77be",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-14.cab",
+    "sha256": "8e57fbcb7f8ced0542947fac5eaba966bb5deffb24b8f7d8e49545d26e9faca1",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-15.cab",
+    "sha256": "8a800bd60dd0fe51a7a4bec7b642fd673e3dca9176f2b318eb7a3eb4cc654445",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-16.cab",
+    "sha256": "4ca100ce7be009c4ebdeaeffab5e553473337a8a02ca1a9564fd3c8760e52d26",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-17.cab",
+    "sha256": "7ef3bbc01d1de4c3831bbf4bbec7d3abd825d42fb701d985f03dd50daf9fbf3a",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-18.cab",
+    "sha256": "f4471b6a6a136ee3b53944ac1817655c6993de8f300a7244a42c58d4398d13d6",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-19.cab",
+    "sha256": "66c5ec39ba9b386b50f1b9a6a927552ae721ebfbafebdd0d0b182a4cffb28f7f",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-20.cab",
+    "sha256": "024aece49fe1217b412a028dc3516bf0fd205f28bc23c8bcd624dff76317342a",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-21.cab",
+    "sha256": "a70d1494d1b535ff64419e7cf3c27d5dc3440805feca5db2c4c6d78729efbbdc",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 32768,
+        "sha256": "68e4dd42e57e506ed441c39ed011e61a515df44bc7c70bab7ff911b3bfddedff"
+      },
+      {
+        "name": "later.bin",
+        "size": 20739,
+        "sha256": "3cd803dccfd7f5524b110a5a659389e0a4de850301ad10c49787efbbfbec4b8c"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-high-history.cab",
+    "sha256": "f429293172e636603df511d17d88c0bc5d5e5c97a445f81349c21341e11b58cc",
+    "members": [
+      {
+        "name": "first.bin",
+        "size": 4161536,
+        "sha256": "4e4926bdcb52f28003701a765588c2e38416e460a0b00ed0b4ee73932eddf736"
+      },
+      {
+        "name": "later.bin",
+        "size": 32768,
+        "sha256": "b7569cf1c06f3f90ba6d7c4a2ff93d88c833eff64e0e5006a2ea2d8098a36c2d"
+      }
+    ]
+  },
+  {
+    "cab": "quantum-package.cab",
+    "sha256": "b3a360cf09ff168d02deeee69a1e494b0c75a8487550f599510818cbe98b5596",
+    "members": [
+      {
+        "name": "update.mum",
+        "size": 302,
+        "sha256": "ed43760f1efde47afcde5b58593720c975fd5623e7b622ecd495e099ebf1b8e2"
+      }
+    ]
+  }
+]

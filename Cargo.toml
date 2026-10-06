@@ -1,0 +1,52 @@
+[package]
+name = "cabinet"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Read and write Microsoft Cabinet archives"
+readme = "README.md"
+
+[features]
+default = []
+cli = ["dep:clap", "dep:tempfile"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"], optional = true }
+tempfile = { version = "3.23", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+ms-compress = { version = "0.1.0", path = "../ms-compress" }
+
+[dev-dependencies]
+tempfile = "3.23"
+serde_json = "1.0"
+sha2 = "0.10"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[[bench]]
+name = "cab"
+harness = false
+
+[[bin]]
+name = "makecab"
+path = "src/bin/makecab.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "makecab"
+required-features = ["cli"]
+
+[[bin]]
+name = "cabextract"
+path = "src/bin/cabextract.rs"
+required-features = ["cli"]
+
+[[example]]
+name = "cabextract"
+required-features = ["cli"]
+
+[profile.release]
+lto = "thin"
+strip = true

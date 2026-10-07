@@ -618,8 +618,27 @@ fn case_ambiguous_and_symlink_neighbors_are_rejected() {
     let one = directory.path().join("one.cab");
     std::fs::write(&one, &parts[0]).unwrap();
     std::fs::write(directory.path().join("two.cab"), &parts[1]).unwrap();
-    std::fs::write(directory.path().join("TWO.CAB"), &parts[1]).unwrap();
-    assert!(Cabinet::open(&one).is_err());
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.path().join("TWO.CAB"))
+    {
+        Ok(mut file) => {
+            std::io::Write::write_all(&mut file, &parts[1]).unwrap();
+            assert!(Cabinet::open(&one).is_err());
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            // Case-insensitive filesystems cannot contain this ambiguity.
+            assert_eq!(
+                Cabinet::open(&one)
+                    .unwrap()
+                    .read_file_bytes("data", 7)
+                    .unwrap(),
+                b"payload"
+            );
+        }
+        Err(error) => panic!("cannot create case-ambiguous fixture: {error}"),
+    }
     let other = tempfile::tempdir().unwrap();
     std::fs::write(other.path().join("one.cab"), &parts[0]).unwrap();
     std::os::unix::fs::symlink(

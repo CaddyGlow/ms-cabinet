@@ -1,0 +1,5 @@
+case,input_bytes,iterations,read_calls,parse_us
+valid-1x1000,9044,100,1002,16.425
+valid-100x10,9836,100,1101,26.027
+overlap-100x100,1736,30,10101,171.920
+overlap-1000x1000,17036,10,1001001,20980.348

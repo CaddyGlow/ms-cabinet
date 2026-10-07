@@ -1,0 +1,6 @@
+   Compiling ms-compress v0.1.0 (/data/cache/cabinet-release-review-20261007/after/ms-compress)
+   Compiling cabinet v0.1.0 (/data/cache/cabinet-release-review-20261007/after/cabinet)
+   Compiling cabinet-fuzz v0.1.0 (/data/cache/cabinet-release-review-20261007/after/cabinet/fuzz)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.06s
+     Running `/data/cache/rust/debug/seed /data/cache/cabinet-release-review-20261007/fuzz-after-10000/corpus`
+Seeded all 23 retained CAB vectors, two allocation-attack regressions, complete spanning decode, 93 codec configurations and 24 frame-boundary cases

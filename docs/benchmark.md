@@ -56,3 +56,10 @@ including multiframe/random data and Quantum long-distance matches. These host
 checks do not establish Windows FDI interoperability. Reader spanning support
 is retained; the writer creates one unsigned cabinet and does not emit spanning
 sets or preserve caller-selected filesystem metadata yet.
+
+## Later release review
+
+The results and API limitations above describe the 2026-10-04 run. Current
+metadata support and review status are documented in
+[the release status](RELEASE-STATUS.md); matching before/after measurements
+are in [the 2026-10-07 comparison](release-review-20261007/benchmark.md).

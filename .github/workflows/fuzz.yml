@@ -21,7 +21,13 @@ jobs:
           repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
           ref: ${{ vars.MS_COMPRESS_REF }}
           path: ms-compress
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fuzz
+          workspaces: |
+            cabinet -> target
+            cabinet/fuzz -> target
       - run: sudo apt-get update && sudo apt-get install -y binutils-dev libunwind-dev liblzma-dev build-essential
       - run: cargo install honggfuzz --version 0.5.62 --locked
       - run: bash scripts/fuzz.sh

@@ -293,17 +293,35 @@ impl<R: Read + Seek> Cabinet<R> {
             });
         }
         let table_end = reader.stream_position()?;
-        let mut ranges = Vec::new();
-        for (folder, (start, count)) in folders.iter_mut().zip(locations) {
-            if count == 0 {
-                continue;
-            }
+        // Each physical block occupies at least its header, reserve and one byte
+        // of compressed data. Reject impossible aggregate counts before allocating
+        // descriptors, including malicious folders that reuse the same data range.
+        let minimum_block_size = 9 + data_reserve as u64;
+        let total_blocks: u64 = locations.iter().map(|&(_, count)| u64::from(count)).sum();
+        if total_blocks > (size - table_end) / minimum_block_size {
+            return Err(invalid("CAB block count exceeds available data bytes"));
+        }
+        let mut locations: Vec<_> = locations
+            .into_iter()
+            .enumerate()
+            .filter(|&(_, (_, count))| count != 0)
+            .collect();
+        locations.sort_unstable_by_key(|&(_, (start, _))| start);
+        for (position, &(folder_index, (start, count))) in locations.iter().enumerate() {
             if start < table_end {
                 return Err(invalid("CAB data overlaps its member table"));
             }
+            // A folder's blocks must fit before the next folder starts. This
+            // bounds allocations by disjoint physical input ranges rather than
+            // discovering an overlap after decoding every folder's block table.
+            let limit = locations
+                .get(position + 1)
+                .map_or(size, |&(_, (next, _))| next.min(size));
+            checked_range(start, u64::from(count) * minimum_block_size, limit)?;
+            let folder = &mut folders[folder_index];
             reader.seek(SeekFrom::Start(start))?;
             for index in 0..count {
-                checked_range(reader.stream_position()?, 8 + data_reserve as u64, size)?;
+                checked_range(reader.stream_position()?, 8 + data_reserve as u64, limit)?;
                 let block = read_array::<8>(&mut reader)?;
                 let compressed_size = u16_at(&block, 4);
                 let uncompressed_size = u16_at(&block, 6);
@@ -313,10 +331,10 @@ impl<R: Read + Seek> Cabinet<R> {
                 if uncompressed_size > 32768 || compressed_size == 0 {
                     return Err(invalid("invalid CAB data block size"));
                 }
-                let mut reserve = vec![0; data_reserve];
-                reader.read_exact(&mut reserve)?;
+                let position = reader.stream_position()?;
+                reader.seek(SeekFrom::Start(position + data_reserve as u64))?;
                 let offset = reader.stream_position()?;
-                checked_range(offset, u64::from(compressed_size), size)?;
+                checked_range(offset, u64::from(compressed_size), limit)?;
                 reader.seek(SeekFrom::Start(offset + u64::from(compressed_size)))?;
                 folder.uncompressed_size += u64::from(uncompressed_size);
                 folder.blocks.push(DataBlock {
@@ -327,11 +345,6 @@ impl<R: Read + Seek> Cabinet<R> {
                     uncompressed_size,
                 });
             }
-            ranges.push((start, reader.stream_position()?));
-        }
-        ranges.sort_unstable();
-        if ranges.windows(2).any(|pair| pair[0].1 > pair[1].0) {
-            return Err(invalid("CAB folder data ranges overlap"));
         }
         Ok(Self {
             readers: vec![reader],

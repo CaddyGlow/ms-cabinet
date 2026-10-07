@@ -74,19 +74,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cabinet"
-version = "0.1.0"
-dependencies = [
- "clap",
- "flate2",
- "ms-compress",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -270,8 +257,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "ms-compress"
+name = "ms-cabinet"
 version = "0.1.0"
+dependencies = [
+ "clap",
+ "flate2",
+ "ms-compress",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
+name = "ms-compress"
+version = "0.1.1"
+dependencies = [
+ "ms-compress-ruzstd",
+]
+
+[[package]]
+name = "ms-compress-ruzstd"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3713af486ad3232ebd7bf988bbece755be1dd6848cef701038ada611b88a532"
 
 [[package]]
 name = "once_cell"

@@ -1,0 +1,2 @@
+# Preserve historical evidence bytes, including CRLF line endings.
+docs/** -text

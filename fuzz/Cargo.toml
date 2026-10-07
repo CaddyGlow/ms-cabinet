@@ -2,14 +2,19 @@
 name = "cabinet-fuzz"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.99"
 publish = false
 
 [workspace]
 
 [dependencies]
-cabinet = { path = ".." }
+cabinet = { version = "0.1.0", package = "ms-cabinet", path = ".." }
 honggfuzz = "0.5"
 
 [profile.release]
 debug = 1
 overflow-checks = true
+
+[lints.clippy]
+# Preserve established iterator/remainder handling during the Rust 1.99 upgrade.
+chunks_exact_to_as_chunks = "allow"

@@ -1,0 +1,224 @@
+name: cabinet Release
+on:
+  push:
+    tags: ['v*']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+defaults:
+  run:
+    working-directory: cabinet
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      ms-compress-sha: ${{ steps.dependency.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
+          ref: ${{ vars.MS_COMPRESS_REF }}
+          path: ms-compress
+      - name: Resolve immutable dependency commit
+        id: dependency
+        working-directory: .
+        shell: bash
+        run: echo "sha=$(git -C ms-compress rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: resolve
+    uses: ./.github/workflows/ci.yml
+    with:
+      ms-compress-sha: ${{ needs.resolve.outputs.ms-compress-sha }}
+
+  package:
+    needs: [resolve, validate]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: cabinet
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cabinet
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
+          ref: ${{ needs.resolve.outputs.ms-compress-sha }}
+          path: ms-compress
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: validation
+          workspaces: |
+            cabinet -> target
+            cabinet/fuzz -> target
+      - name: Check tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, tomllib
+          with open("Cargo.toml", "rb") as manifest:
+              data = tomllib.load(manifest)
+          version = data.get("package", data.get("workspace", {}).get("package", {}))["version"]
+          if os.environ["RELEASE_TAG"] != f"v{version}":
+              raise SystemExit(f"Tag must match package version v{version}")
+          PY
+      - name: Package sources and sibling dependencies
+        working-directory: .
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          directory="cabinet-${RELEASE_TAG}-source"
+          mkdir -p "dist/$directory"
+          for repo in cabinet ms-compress; do
+            mkdir -p "dist/$directory/$repo"
+            git -C "$repo" log -1 --format="$repo %H" >> "dist/$directory/COMMITS"
+            git -C "$repo" archive --format=tar --output="$RUNNER_TEMP/$repo.tar" HEAD
+            tar -xf "$RUNNER_TEMP/$repo.tar" -C "dist/$directory/$repo"
+          done
+          tar -czf "dist/$directory.tar.gz" -C dist "$directory"
+      - name: Test extracted source release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bash scripts/check-source-package.sh "../dist/cabinet-${RELEASE_TAG}-source.tar.gz"
+      - name: Build and verify crates.io packages
+        run: cargo package --workspace --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: |
+            dist/*-source.tar.gz
+            cabinet/target/package/*.crate
+          if-no-files-found: error
+
+  binaries:
+    needs: [resolve, package]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: cabinet
+    env:
+      TARGET: ${{ matrix.target }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cabinet
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
+          ref: ${{ needs.resolve.outputs.ms-compress-sha }}
+          path: ms-compress
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target }}
+          workspaces: |
+            cabinet -> target
+            cabinet/fuzz -> target
+      - name: Build release outputs
+        run: cargo build --release --features cli --bins --target "$TARGET" --locked
+      - name: Test release profile
+        run: cargo test --release --features cli --target "$TARGET" --locked
+      - name: Package compiled outputs and license notices
+        env:
+          OUTPUT_REPOSITORY: cabinet
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, shutil, tarfile
+          repo = os.environ["OUTPUT_REPOSITORY"]
+          target = os.environ["TARGET"]
+          directory = f"{repo}-{os.environ['RELEASE_TAG']}-{target}"
+          output = pathlib.Path("dist") / directory
+          output.mkdir(parents=True)
+          build = pathlib.Path("target") / target / "release"
+          files = [name + (".exe" if "windows" in target else "") for name in ['makecab', 'cabextract']]
+          for name in files:
+              shutil.copy2(build / name, output / name)
+          shutil.copy2("README.md", output / "README.md")
+          import subprocess
+          with (output / "COMMITS").open("w") as commits:
+              for sibling in ["cabinet", "ms-compress"]:
+                  sha = subprocess.check_output(["git", "-C", str(pathlib.Path("..") / sibling), "rev-parse", "HEAD"], text=True).strip()
+                  commits.write(f"{sibling} {sha}\n")
+          for sibling in ['cabinet', 'ms-compress']:
+              base = pathlib.Path("..") / sibling
+              for path in base.rglob("*"):
+                  if any(part in {".git", "target", "dist"} for part in path.relative_to(base).parts):
+                      continue
+                  if path.is_file() and path.name.upper().startswith(("LICENSE", "NOTICE", "COPYING")):
+                      dest = output / "licenses" / sibling / path.relative_to(base)
+                      dest.parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(path, dest)
+          with tarfile.open(f"dist/{directory}.tar.gz", "w:gz") as archive:
+              archive.add(output, arcname=directory)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: cabinet/dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish to crates.io
+    needs: [package, binaries]
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: cabinet
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
+          ref: ${{ vars.MS_COMPRESS_REF || 'main' }}
+          path: ms-compress
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - run: python3 scripts/publish-crates.py
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  github-release:
+    needs: [package, binaries, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Publish package, binaries, and checksums
+        working-directory: dist
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          shopt -s nullglob
+          files=(*.crate *.tar.gz)
+          test "${#files[@]}" -gt 0
+          sha256sum "${files[@]}" > SHA256SUMS
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" --verify-tag --generate-notes             "${flags[@]}" "${files[@]}" SHA256SUMS

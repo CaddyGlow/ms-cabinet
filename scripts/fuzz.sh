@@ -5,24 +5,14 @@ output=${CABINET_FUZZ_OUTPUT:-"$root/target/fuzz/run-$(date -u +%Y%m%dT%H%M%SZ)-
 iterations=${CABINET_FUZZ_ITERATIONS:-10000}
 [[ "$output" = /* && "$iterations" =~ ^[1-9][0-9]*$ ]] || exit 2
 mkdir -p "$output/corpus/cab" "$output/corpus/spanning" "$output/corpus/roundtrip" "$output/logs"
-python3 - "$root" "$output" <<'PY'
+cargo run --manifest-path "$root/fuzz/Cargo.toml" --locked --bin seed -- "$output/corpus" > "$output/seeding.log" 2>&1
+python3 - "$output" <<'HASHES'
 import pathlib, sys, hashlib
-root, out = map(pathlib.Path, sys.argv[1:])
-fixtures = sorted((root/'tests/fixtures').rglob('*.cab'))
-for p in fixtures:
-    data=p.read_bytes(); name=hashlib.sha256(data).hexdigest()
-    (out/'corpus/cab'/name).write_bytes(data)
-for a,b in zip(fixtures, fixtures[1:]):
-    x,y=a.read_bytes(),b.read_bytes()
-    if len(x)<=65535:
-        data=len(x).to_bytes(2,'little')+x+y
-        (out/'corpus/spanning'/hashlib.sha256(data).hexdigest()).write_bytes(data)
-for selector in range(256):
-    (out/'corpus/roundtrip'/str(selector)).write_bytes(bytes([selector])+bytes(range(256))*4)
+out = pathlib.Path(sys.argv[1])
 with (out/'seeds.sha256').open('w') as f:
     for p in sorted((out/'corpus').rglob('*')):
         if p.is_file(): f.write(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p)+'\n')
-PY
+HASHES
 rustc -Vv > "$output/toolchain.txt"
 cargo hfuzz version >> "$output/toolchain.txt" 2>&1
 export HFUZZ_WORKSPACE="$output/workspace" HFUZZ_BUILD_ARGS=--locked

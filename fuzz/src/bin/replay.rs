@@ -5,7 +5,9 @@ fn main() {
         let data = std::fs::read(path).unwrap();
         match target.as_str() {
             "cab" => cabinet_fuzz::cab(&data),
-            "spanning" => cabinet_fuzz::spanning(&data),
+            "spanning" => {
+                cabinet_fuzz::spanning(&data);
+            }
             "roundtrip" => cabinet_fuzz::roundtrip(&data),
             _ => panic!("unknown target"),
         }

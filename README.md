@@ -1,7 +1,8 @@
 # cabinet
 
 A Rust library for reading and writing Microsoft Cabinet archives. It has no
-Windows API or `windows-uup` dependency.
+Windows API or `windows-uup` dependency. Builds require Rust 1.99 and the
+sibling `../ms-compress` checkout.
 
 ```rust
 use cabinet::{Cabinet, CabinetBuilder, WriteCompression};
@@ -27,8 +28,9 @@ Inputs must remain stable during reading.
 
 The writer supports all four compression methods. `CabinetBuilder` borrows
 member names and byte slices and writes to any `Write + Seek` output. It creates
-one unsigned cabinet with one solid folder, deterministic timestamps, and UTF-8
-names. It rejects absolute/traversing or duplicate names and CAB size/count
+one unsigned cabinet with one solid folder, deterministic default timestamps,
+and UTF-8 names. `add_file_with_metadata` accepts raw DOS timestamps and the
+supported read-only, hidden, system and archive attribute bits. It rejects absolute/traversing or duplicate names and CAB size/count
 limit violations. Codec buffers are bounded by the frame and dictionary sizes;
 member contents are not copied into an archive-sized staging buffer. Errors can
 leave partial output, which the caller must discard.
@@ -38,12 +40,11 @@ blocks with greedy frame-local matches and persistent trees/recent offsets.
 Quantum uses adaptive arithmetic models and greedy dictionary matches across
 frames; its level controls the search bound. These are real compression
 encoders, with no requirement to match another producer's byte stream or ratio.
-The writer does not create spanning sets or signatures, and does not expose
-custom timestamps or attributes yet.
+The writer does not create spanning sets or signatures.
 
-Run `cargo test -p cabinet --locked`. Writer interoperability tests use 7-Zip when
+Run `cargo test -p ms-cabinet --locked`. Writer interoperability tests use 7-Zip when
 available; set `CABINET_REQUIRE_7Z=1` to require it, or `CABINET_7Z` to select its path.
-`cargo run -p cabinet --example cab_decode -- ARCHIVE MEMBER` streams a decoded
+`cargo run -p ms-cabinet --example cab_decode -- ARCHIVE MEMBER` streams a decoded
 member to stdout. Application package-inspection and CLI tests remain in
 `windows-uup`, importing `cabinet` directly.
 
@@ -57,11 +58,11 @@ retained in `LICENSE-cab-MIT.txt`.
 From the repository root, run:
 
 ```sh
-cargo bench -p cabinet --bench cab --locked -- --iterations 5 --size 1048576
-cargo bench -p cabinet --bench cab --locked -- --input "$PWD/path/to/payload" --csv "$PWD/results.csv"
+cargo bench -p ms-cabinet --bench cab --locked -- --iterations 5 --size 1048576
+cargo bench -p ms-cabinet --bench cab --locked -- --input "$PWD/path/to/payload" --csv "$PWD/results.csv"
 ```
 
- It reports writer and
+The benchmark reports writer and
 streaming-reader throughput in MiB/s, CAB bytes, and CAB/input size ratio for
 stored, MSZIP, two LZX windows, and two Quantum levels. The default deterministic
 corpora contain repetitive, mixed, and pseudorandom bytes. Each case validates a
@@ -71,16 +72,19 @@ iterations, and decoded bytes stream to a sink. This measures in-memory codec
 performance, without filesystem throughput. Cargo runs the executable in the
 crate directory; use absolute paths for inputs and CSV output.
 
-A recorded run and its limits are in [the benchmark report](docs/benchmark.md).
+Historical results are in [the original benchmark report](docs/benchmark.md).
+The [release review comparison](docs/release-review-20261007/benchmark.md) records
+matching before/after codec and adversarial-parser measurements. Run the latter
+with `cargo bench --bench parser --locked`.
 
 ## Command-line examples
 
 Create a cabinet from files or a directory tree:
 
 ```sh
-cargo run -p cabinet --features cli --example makecab -- --output payload.cab --compression mszip file.txt assets/
-cargo run -p cabinet --features cli --example makecab -- --output payload-lzx.cab --compression lzx --window 21 assets/
-cargo run -p cabinet --features cli --example makecab -- --output payload-quantum.cab --compression quantum --window 18 --level 7 assets/
+cargo run -p ms-cabinet --features cli --example makecab -- --output payload.cab --compression mszip file.txt assets/
+cargo run -p ms-cabinet --features cli --example makecab -- --output payload-lzx.cab --compression lzx --window 21 assets/
+cargo run -p ms-cabinet --features cli --example makecab -- --output payload-quantum.cab --compression quantum --window 18 --level 7 assets/
 ```
 
 `--compression` accepts `none`, `mszip` (default), `lzx`, or `quantum`. Directory
@@ -93,10 +97,10 @@ failed writes do not publish partial archives. The output parent must exist.
 List, verify, or extract a cabinet:
 
 ```sh
-cargo run -p cabinet --features cli --example cabextract -- payload.cab --list
-cargo run -p cabinet --features cli --example cabextract -- payload.cab --test
-cargo run -p cabinet --features cli --example cabextract -- payload.cab --output extracted
-cargo run -p cabinet --features cli --example cabextract -- payload.cab --output selected --member assets/icon.png
+cargo run -p ms-cabinet --features cli --example cabextract -- payload.cab --list
+cargo run -p ms-cabinet --features cli --example cabextract -- payload.cab --test
+cargo run -p ms-cabinet --features cli --example cabextract -- payload.cab --output extracted
+cargo run -p ms-cabinet --features cli --example cabextract -- payload.cab --output selected --member assets/icon.png
 ```
 
 Extraction requires a new destination directory with an existing parent. Members
@@ -111,7 +115,7 @@ for Microsoft `makecab` directive files or the original `cabextract` option synt
 Build standalone example executables with:
 
 ```sh
-cargo build -p cabinet --features cli --release --examples --locked
+cargo build -p ms-cabinet --features cli --release --examples --locked
 ```
 
 They are emitted under `target/release/examples/`, or the corresponding path under
@@ -137,3 +141,12 @@ installed binaries share their command implementations.
 
 See [the fuzzing guide](fuzz/README.md) for all-fixture regression replay,
 bounded reader/spanning/round-trip targets, and reproducible campaigns.
+[Release status](docs/RELEASE-STATUS.md) records the resolved review findings and
+the remaining platform and publishing gates.
+
+## Publication
+
+The crates.io package is `ms-cabinet`; the Rust library name remains `cabinet`.
+Use `cabinet = { package = "ms-cabinet", version = "0.1.0" }`.
+The repository is https://github.com/CaddyGlow/ms-cabinet.
+Version tags run validation, build CLI artifacts, publish the crate, and create the GitHub Release.

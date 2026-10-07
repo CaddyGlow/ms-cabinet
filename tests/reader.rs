@@ -873,3 +873,96 @@ fn quantum_levels_are_metadata_and_invalid_levels_or_windows_are_rejected() {
         assert!(Cabinet::new(Cursor::new(bytes)).is_err());
     }
 }
+
+// Resource exhaustion regression: thousands of folders must not expand the same
+// physical block table repeatedly before overlap rejection.
+#[test]
+fn repeated_folder_ranges_are_rejected_before_block_expansion() {
+    use std::{
+        cell::Cell,
+        io::{self, Seek, SeekFrom},
+        rc::Rc,
+    };
+    struct Counting {
+        bytes: Cursor<Vec<u8>>,
+        reads: Rc<Cell<usize>>,
+    }
+    impl Read for Counting {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            self.reads.set(self.reads.get() + 1);
+            self.bytes.read(output)
+        }
+    }
+    impl Seek for Counting {
+        fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+            self.bytes.seek(position)
+        }
+    }
+    for count in [1000u16, 50000] {
+        let start = 36 + usize::from(count) * 8;
+        let length = start + usize::from(count) * 9;
+        let mut bytes = vec![0; length];
+        bytes[..4].copy_from_slice(b"MSCF");
+        put32(&mut bytes, 8, length as u32);
+        put32(&mut bytes, 16, start as u32);
+        bytes[24..26].copy_from_slice(&[3, 1]);
+        put16(&mut bytes, 26, count);
+        for index in 0..usize::from(count) {
+            put32(&mut bytes, 36 + index * 8, start as u32);
+            put16(&mut bytes, 40 + index * 8, count);
+            put16(&mut bytes, start + index * 9 + 4, 1);
+            put16(&mut bytes, start + index * 9 + 6, 1);
+        }
+        let reads = Rc::new(Cell::new(0));
+        let input = Counting {
+            bytes: Cursor::new(bytes),
+            reads: reads.clone(),
+        };
+        let error = Cabinet::new(input).err().expect("overlap must fail");
+        assert!(error.to_string().contains("block count"));
+        assert!(
+            reads.get() <= usize::from(count) + 1,
+            "expanded a reused block table"
+        );
+    }
+}
+
+#[test]
+fn physically_reversed_folder_order_is_supported() {
+    let mut bytes = vec![0; 72];
+    bytes[..4].copy_from_slice(b"MSCF");
+    put32(&mut bytes, 8, 72);
+    put32(&mut bytes, 16, 52);
+    bytes[24..26].copy_from_slice(&[3, 1]);
+    put16(&mut bytes, 26, 2);
+    put32(&mut bytes, 36, 62); // Folder 0 is physically after folder 1.
+    put16(&mut bytes, 40, 1);
+    put32(&mut bytes, 44, 52);
+    put16(&mut bytes, 48, 1);
+    for start in [52, 62] {
+        put16(&mut bytes, start + 4, 2);
+        put16(&mut bytes, start + 6, 2);
+    }
+    Cabinet::new(Cursor::new(bytes)).unwrap();
+}
+
+#[test]
+fn folder_blocks_cannot_cross_the_next_physical_folder() {
+    // Aggregate block count fits, but the first folder's block crosses the
+    // second start. Padding ensures this exercises per-folder range validation.
+    let mut bytes = vec![0; 90];
+    bytes[..4].copy_from_slice(b"MSCF");
+    put32(&mut bytes, 8, 90);
+    put32(&mut bytes, 16, 52);
+    bytes[24..26].copy_from_slice(&[3, 1]);
+    put16(&mut bytes, 26, 2);
+    put32(&mut bytes, 36, 52);
+    put16(&mut bytes, 40, 1);
+    put32(&mut bytes, 44, 61);
+    put16(&mut bytes, 48, 1);
+    put16(&mut bytes, 56, 10);
+    put16(&mut bytes, 58, 10);
+    put16(&mut bytes, 65, 1);
+    put16(&mut bytes, 67, 1);
+    assert!(Cabinet::new(Cursor::new(bytes)).is_err());
+}

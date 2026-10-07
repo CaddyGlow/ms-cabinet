@@ -1,10 +1,18 @@
 [package]
-name = "cabinet"
+name = "ms-cabinet"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.99"
 license = "MIT"
 description = "Read and write Microsoft Cabinet archives"
 readme = "README.md"
+repository = "https://github.com/CaddyGlow/ms-cabinet"
+homepage = "https://github.com/CaddyGlow/ms-cabinet"
+keywords = ["cab", "cabinet", "archive", "compression"]
+categories = ["compression", "parser-implementations"]
+
+[lib]
+name = "cabinet"
 
 [features]
 default = []
@@ -50,3 +58,11 @@ required-features = ["cli"]
 [profile.release]
 lto = "thin"
 strip = true
+
+[lints.clippy]
+# Preserve established iterator/remainder handling during the Rust 1.99 upgrade.
+chunks_exact_to_as_chunks = "allow"
+
+[[bench]]
+name = "parser"
+harness = false

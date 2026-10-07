@@ -15,20 +15,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
-name = "cabinet"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "ms-compress",
- "serde",
-]
-
-[[package]]
 name = "cabinet-fuzz"
 version = "0.1.0"
 dependencies = [
- "cabinet",
  "honggfuzz",
+ "ms-cabinet",
 ]
 
 [[package]]
@@ -101,8 +92,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "ms-compress"
+name = "ms-cabinet"
 version = "0.1.0"
+dependencies = [
+ "flate2",
+ "ms-compress",
+ "serde",
+]
+
+[[package]]
+name = "ms-compress"
+version = "0.1.1"
+dependencies = [
+ "ms-compress-ruzstd",
+]
+
+[[package]]
+name = "ms-compress-ruzstd"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3713af486ad3232ebd7bf988bbece755be1dd6848cef701038ada611b88a532"
 
 [[package]]
 name = "proc-macro2"

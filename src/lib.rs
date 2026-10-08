@@ -18,6 +18,28 @@
 //! assert_eq!(cabinet.read_file_bytes("hello.txt", 1024)?, b"Hello, CAB!");
 //! # Ok::<(), std::io::Error>(())
 //! ```
+//!
+//! # Reader-based creation
+//!
+//! Register names and sizes first, then open each file only when the writer
+//! requests it. Payload memory is limited to a 32 KiB frame plus codec buffers;
+//! the frame and compression history continue across member boundaries.
+//!
+//! ```no_run
+//! use cabinet::{CabinetBuilder, WriteCompression};
+//! use std::{fs::File, io::Read};
+//!
+//! let names = ["first.bin", "second.bin"];
+//! let mut builder = CabinetBuilder::new(WriteCompression::MsZip);
+//! for name in names {
+//!     builder.add_file_source(name, std::fs::metadata(name)?.len())?;
+//! }
+//! let mut output = File::create("output.cab")?;
+//! builder.write_from_readers(&mut output, &mut |index| {
+//!     Ok(Box::new(File::open(names[index])?) as Box<dyn Read>)
+//! })?;
+//! # Ok::<(), std::io::Error>(())
+//! ```
 #![deny(missing_docs)]
 
 /// Version of this library, as declared in `Cargo.toml`.

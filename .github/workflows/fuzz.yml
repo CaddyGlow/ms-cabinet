@@ -16,11 +16,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cabinet
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ vars.MS_COMPRESS_REF }}
-          path: ms-compress
       - uses: dtolnay/rust-toolchain@1.99.0
       - uses: Swatinem/rust-cache@v2
         with:

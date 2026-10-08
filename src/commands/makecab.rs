@@ -64,10 +64,32 @@ fn compression(args: &Args) -> Result<WriteCompression> {
         }
     })
 }
+struct Source {
+    name: String,
+    path: PathBuf,
+    size: u64,
+}
+
+impl Source {
+    fn open(&self) -> io::Result<Box<dyn io::Read>> {
+        // Recheck the source at the time its payload is consumed. Enumeration
+        // deliberately retains neither bytes nor an open handle per member.
+        if !fs::symlink_metadata(&self.path)?.is_file() {
+            return Err(io::Error::other("input is no longer a regular file"));
+        }
+        let file = fs::File::open(&self.path)?;
+        let metadata = file.metadata()?;
+        if !metadata.is_file() || metadata.len() != self.size {
+            return Err(io::Error::other("input changed during creation"));
+        }
+        Ok(Box::new(file))
+    }
+}
+
 fn collect(
     path: &Path,
     name: String,
-    files: &mut Vec<(String, Vec<u8>)>,
+    files: &mut Vec<Source>,
     names: &mut BTreeSet<String>,
 ) -> Result<()> {
     support::member_path(&name)?;
@@ -87,7 +109,11 @@ fn collect(
         if !names.insert(key) {
             return Err(format!("duplicate archive member: {name}").into());
         }
-        files.push((name, fs::read(path)?));
+        files.push(Source {
+            name,
+            path: path.to_owned(),
+            size: metadata.len(),
+        });
     } else {
         return Err(format!(
             "input must be a regular file or directory, not a link or special file: {}",
@@ -111,10 +137,10 @@ fn run(args: Args) -> Result<()> {
             .ok_or("input must have a UTF-8 basename")?;
         collect(input, name.to_owned(), &mut files, &mut names)?;
     }
-    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files.sort_by(|a, b| a.name.cmp(&b.name));
     let mut builder = CabinetBuilder::new(compression);
-    for (name, bytes) in &files {
-        builder.add_file(name, bytes)?;
+    for source in &files {
+        builder.add_file_source(&source.name, source.size)?;
     }
     let parent = args
         .output
@@ -123,7 +149,7 @@ fn run(args: Args) -> Result<()> {
         .unwrap_or_else(|| Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     let mut output = BufWriter::new(temporary.as_file_mut());
-    let size = builder.write(&mut output)?;
+    let size = builder.write_from_readers(&mut output, &mut |index| files[index].open())?;
     output.flush()?;
     drop(output);
     temporary.as_file().sync_all()?;
@@ -202,6 +228,17 @@ mod tests {
         .unwrap();
         assert!(compression(&args).is_err());
     }
+    #[test]
+    fn changed_source_is_rejected_when_opened() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("file");
+        fs::write(&path, b"initial").unwrap();
+        let mut sources = Vec::new();
+        collect(&path, "file".to_owned(), &mut sources, &mut BTreeSet::new()).unwrap();
+        fs::write(&path, b"changed size").unwrap();
+        assert!(sources[0].open().is_err());
+    }
+
     #[cfg(unix)]
     #[test]
     fn input_symlinks_are_rejected() {

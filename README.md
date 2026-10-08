@@ -27,13 +27,21 @@ explicitly ordered seekable inputs. Checksums do not authenticate a publisher.
 Inputs must remain stable during reading.
 
 The writer supports all four compression methods. `CabinetBuilder` borrows
-member names and byte slices and writes to any `Write + Seek` output. It creates
+member names and optional byte slices and writes to any `Write + Seek` output. It creates
 one unsigned cabinet with one solid folder, deterministic default timestamps,
 and UTF-8 names. `add_file_with_metadata` accepts raw DOS timestamps and the
 supported read-only, hidden, system and archive attribute bits. It rejects absolute/traversing or duplicate names and CAB size/count
 limit violations. Codec buffers are bounded by the frame and dictionary sizes;
 member contents are not copied into an archive-sized staging buffer. Errors can
 leave partial output, which the caller must discard.
+
+For file or generated input, register each name and declared length with
+`add_file_source` (or `add_file_source_with_metadata`), then call
+`write_from_readers` with an indexed callback returning a `Read` source. One
+reader is opened at a time, and the same 32 KiB frame spans member boundaries
+for every codec. Sources must produce exactly their declared length; truncated,
+growing, or nonempty zero-length sources fail. The byte-based `write` API uses
+the same encoder and remains available.
 
 MSZIP uses independently compressed DEFLATE frames. LZX uses verbatim Huffman
 blocks with greedy frame-local matches and persistent trees/recent offsets.
@@ -77,6 +85,11 @@ The [release review comparison](docs/release-review-20261007/benchmark.md) recor
 matching before/after codec and adversarial-parser measurements. Run the latter
 with `cargo bench --bench parser --locked`.
 
+The [streaming creation benchmark](docs/streaming-benchmark-20261008.md)
+compares byte-based and reader-based input using fresh processes, file output,
+and peak RSS measurements. Its raw CSV and reproduction commands distinguish
+input retention from codec workspace and preserve the earlier codec benchmarks.
+
 ## Command-line examples
 
 Create a cabinet from files or a directory tree:
@@ -90,8 +103,8 @@ cargo run -p ms-cabinet --features cli --example makecab -- --output payload-qua
 `--compression` accepts `none`, `mszip` (default), `lzx`, or `quantum`. Directory
 inputs retain their root basename, recurse in sorted order, and omit empty
 directories. Inputs must be regular files/directories with portable UTF-8 names;
-symlinks and special files are rejected. This example loads input contents into
-memory before building the archive. Existing output files are preserved, and
+symlinks and special files are rejected. Creation keeps source descriptors and
+streams one input file at a time. Existing output files are preserved, and
 failed writes do not publish partial archives. The output parent must exist.
 
 List, verify, or extract a cabinet:

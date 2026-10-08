@@ -21,31 +21,12 @@ defaults:
   run:
     working-directory: cabinet
 jobs:
-  resolve:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    outputs:
-      ms-compress-sha: ${{ steps.dependency.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ vars.MS_COMPRESS_REF }}
-          path: ms-compress
-      - name: Resolve immutable dependency commit
-        id: dependency
-        working-directory: .
-        shell: bash
-        run: echo "sha=$(git -C ms-compress rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
   validate:
-    needs: resolve
+    if: github.event_name == 'push'
     uses: ./.github/workflows/ci.yml
-    with:
-      ms-compress-sha: ${{ needs.resolve.outputs.ms-compress-sha }}
 
   package:
-    needs: [resolve, validate]
+    needs: validate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,11 +36,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cabinet
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ needs.resolve.outputs.ms-compress-sha }}
-          path: ms-compress
       - uses: dtolnay/rust-toolchain@1.99.0
       - uses: Swatinem/rust-cache@v2
         with:
@@ -79,19 +55,17 @@ jobs:
           if os.environ["RELEASE_TAG"] != f"v{version}":
               raise SystemExit(f"Tag must match package version v{version}")
           PY
-      - name: Package sources and sibling dependencies
+      - name: Package standalone sources and locked registry dependencies
         working-directory: .
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           directory="cabinet-${RELEASE_TAG}-source"
           mkdir -p "dist/$directory"
-          for repo in cabinet ms-compress; do
-            mkdir -p "dist/$directory/$repo"
-            git -C "$repo" log -1 --format="$repo %H" >> "dist/$directory/COMMITS"
-            git -C "$repo" archive --format=tar --output="$RUNNER_TEMP/$repo.tar" HEAD
-            tar -xf "$RUNNER_TEMP/$repo.tar" -C "dist/$directory/$repo"
-          done
+          mkdir -p "dist/$directory/cabinet"
+          git -C cabinet log -1 --format="cabinet %H" > "dist/$directory/COMMITS"
+          git -C cabinet archive --format=tar --output="$RUNNER_TEMP/cabinet.tar" HEAD
+          tar -xf "$RUNNER_TEMP/cabinet.tar" -C "dist/$directory/cabinet"
           tar -czf "dist/$directory.tar.gz" -C dist "$directory"
       - name: Test extracted source release
         env:
@@ -108,7 +82,7 @@ jobs:
           if-no-files-found: error
 
   binaries:
-    needs: [resolve, package]
+    needs: package
     strategy:
       fail-fast: false
       matrix:
@@ -131,11 +105,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cabinet
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ needs.resolve.outputs.ms-compress-sha }}
-          path: ms-compress
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: ${{ matrix.target }}
@@ -165,20 +134,50 @@ jobs:
           for name in files:
               shutil.copy2(build / name, output / name)
           shutil.copy2("README.md", output / "README.md")
-          import subprocess
-          with (output / "COMMITS").open("w") as commits:
-              for sibling in ["cabinet", "ms-compress"]:
-                  sha = subprocess.check_output(["git", "-C", str(pathlib.Path("..") / sibling), "rev-parse", "HEAD"], text=True).strip()
-                  commits.write(f"{sibling} {sha}\n")
-          for sibling in ['cabinet', 'ms-compress']:
-              base = pathlib.Path("..") / sibling
+          import json, subprocess
+          sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          (output / "COMMITS").write_text(f"cabinet {sha}\n")
+          shutil.copy2("Cargo.lock", output / "Cargo.lock")
+          metadata = json.loads(subprocess.check_output([
+              "cargo", "metadata", "--locked", "--all-features", "--format-version", "1",
+              "--filter-platform", target,
+          ], text=True))
+          packages = {package["id"]: package for package in metadata["packages"]}
+          nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
+          root = metadata["resolve"]["root"]
+          pending = [root]
+          selected = set()
+          while pending:
+              package_id = pending.pop()
+              if package_id in selected:
+                  continue
+              selected.add(package_id)
+              pending.extend(dep["pkg"] for dep in nodes[package_id]["deps"]
+                             if any(kind["kind"] != "dev" for kind in dep["dep_kinds"]))
+          provenance = []
+          for package_id in sorted(selected):
+              package = packages[package_id]
+              base = pathlib.Path(package["manifest_path"]).parent
+              label = "cabinet" if package_id == root else f"{package['name']}-{package['version']}"
+              if package_id != root:
+                  if not (package["source"] or "").startswith("registry+"):
+                      raise SystemExit(f"Non-registry release dependency: {package_id}")
+                  provenance.append({key: package.get(key) for key in
+                                     ["name", "version", "source", "license", "repository"]})
+              paths = set()
               for path in base.rglob("*"):
                   if any(part in {".git", "target", "dist"} for part in path.relative_to(base).parts):
                       continue
-                  if path.is_file() and path.name.upper().startswith(("LICENSE", "NOTICE", "COPYING")):
-                      dest = output / "licenses" / sibling / path.relative_to(base)
-                      dest.parent.mkdir(parents=True, exist_ok=True)
-                      shutil.copy2(path, dest)
+                  if path.is_file() and any(word in path.name.upper() for word in ["LICENSE", "NOTICE", "COPYING"]):
+                      paths.add(path)
+              if package.get("license_file"):
+                  license_path = pathlib.Path(package["license_file"])
+                  paths.add(license_path if license_path.is_absolute() else base / license_path)
+              for path in sorted(paths):
+                  destination = output / "licenses" / label / path.relative_to(base)
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(path, destination)
+          (output / "DEPENDENCIES.json").write_text(json.dumps(provenance, indent=2) + "\n")
           with tarfile.open(f"dist/{directory}.tar.gz", "w:gz") as archive:
               archive.add(output, arcname=directory)
           PY
@@ -197,11 +196,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cabinet
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ vars.MS_COMPRESS_REF || 'main' }}
-          path: ms-compress
       - uses: dtolnay/rust-toolchain@1.99.0
       - run: python3 scripts/publish-crates.py
         env:

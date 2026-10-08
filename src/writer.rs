@@ -3,7 +3,7 @@ use crate::reader::block_checksum;
 use ms_compress::{lzx_encode::CabinetLzxEncoder, quantum::QuantumEncoder};
 use std::{
     collections::BTreeSet,
-    io::{self, Seek, SeekFrom, Write},
+    io::{self, Read, Seek, SeekFrom, Write},
 };
 
 const FRAME_SIZE: usize = 32768;
@@ -50,7 +50,8 @@ impl WriteCompression {
 
 struct File<'a> {
     name: &'a str,
-    data: &'a [u8],
+    data: Option<&'a [u8]>,
+    size: u32,
     offset: u32,
     dos_date: u16,
     dos_time: u16,
@@ -59,7 +60,8 @@ struct File<'a> {
 
 /// Build one unsigned CAB containing a single solid folder.
 ///
-/// Inputs are borrowed, not copied. Compression uses bounded frame buffers and
+/// Names and optional byte inputs are borrowed, not copied. Reader-based inputs
+/// are opened one at a time. Compression uses bounded frame buffers and
 /// codec history. At most 65535 files and 65535 frames are supported. Files have
 /// deterministic DOS timestamps (1980-01-01) by default; explicit metadata can
 /// retain DOS modification dates and read-only/hidden/system/archive attributes.
@@ -91,6 +93,40 @@ impl<'a> CabinetBuilder<'a> {
     /// and contents or directory sizes exceeding single-cabinet format limits.
     /// Duplicate matching is ASCII-insensitive and treats both separators alike.
     pub fn add_file(&mut self, name: &'a str, data: &'a [u8]) -> io::Result<&mut Self> {
+        self.add_file_inner(name, data.len() as u64, Some(data), 0x21, 0, 0xa0)
+    }
+
+    /// Register a file whose contents will be opened by [`Self::write_from_readers`].
+    ///
+    /// The size must match the reader exactly, including for empty files. Names
+    /// and format limits are checked now, before any source is opened.
+    pub fn add_file_source(&mut self, name: &'a str, size: u64) -> io::Result<&mut Self> {
+        self.add_file_inner(name, size, None, 0x21, 0, 0xa0)
+    }
+
+    /// Register a reader-based file with DOS modification time and CAB attributes.
+    /// See [`Self::add_file_with_metadata`] for supported attribute bits.
+    pub fn add_file_source_with_metadata(
+        &mut self,
+        name: &'a str,
+        size: u64,
+        dos_date: u16,
+        dos_time: u16,
+        attributes: u16,
+    ) -> io::Result<&mut Self> {
+        self.add_file_inner(name, size, None, dos_date, dos_time, attributes)
+    }
+
+    fn add_file_inner(
+        &mut self,
+        name: &'a str,
+        length: u64,
+        data: Option<&'a [u8]>,
+        dos_date: u16,
+        dos_time: u16,
+        attributes: u16,
+    ) -> io::Result<&mut Self> {
+        validate_metadata(dos_date, dos_time, attributes)?;
         if name.is_empty()
             || name.len() > 255
             || name.contains('\0')
@@ -107,7 +143,7 @@ impl<'a> CabinetBuilder<'a> {
         if self.names.contains(&key) {
             return Err(invalid("duplicate CAB member name"));
         }
-        let length = u32::try_from(data.len()).map_err(|_| invalid("CAB member exceeds 4 GiB"))?;
+        let length = u32::try_from(length).map_err(|_| invalid("CAB member exceeds 4 GiB"))?;
         let size = self
             .size
             .checked_add(length)
@@ -124,10 +160,11 @@ impl<'a> CabinetBuilder<'a> {
         self.files.push(File {
             name,
             data,
+            size: length,
             offset: self.size,
-            dos_date: 0x21,
-            dos_time: 0,
-            attributes: 0xa0,
+            dos_date,
+            dos_time,
+            attributes: attributes | 0x80,
         });
         self.names.insert(key);
         self.size = size;
@@ -145,25 +182,14 @@ impl<'a> CabinetBuilder<'a> {
         dos_time: u16,
         attributes: u16,
     ) -> io::Result<&mut Self> {
-        if attributes & !0xa7 != 0
-            || dos_date & 31 == 0
-            || (dos_date >> 5) & 15 == 0
-            || (dos_date >> 5) & 15 > 12
-            || dos_time & 31 > 29
-            || (dos_time >> 5) & 63 > 59
-            || dos_time >> 11 > 23
-        {
-            return Err(invalid("invalid CAB file metadata"));
-        }
-        self.add_file(name, data)?;
-        let file = self
-            .files
-            .last_mut()
-            .ok_or_else(|| invalid("missing CAB member"))?;
-        file.dos_date = dos_date;
-        file.dos_time = dos_time;
-        file.attributes = attributes | 0x80;
-        Ok(self)
+        self.add_file_inner(
+            name,
+            data.len() as u64,
+            Some(data),
+            dos_date,
+            dos_time,
+            attributes,
+        )
     }
 
     /// Write the cabinet at the output's current position and return its byte size.
@@ -176,6 +202,30 @@ impl<'a> CabinetBuilder<'a> {
     /// Returns configuration, format-size, codec, or underlying I/O errors.
     /// Output may contain a partial cabinet on error; discard it.
     pub fn write<W: Write + Seek>(&self, output: &mut W) -> io::Result<u64> {
+        if self.files.iter().any(|file| file.data.is_none()) {
+            return Err(invalid("reader-based CAB files require write_from_readers"));
+        }
+        self.write_from_readers(output, &mut |index| {
+            let bytes = self.files[index]
+                .data
+                .ok_or_else(|| invalid("missing CAB file data"))?;
+            Ok(Box::new(io::Cursor::new(bytes)))
+        })
+    }
+
+    /// Write using one lazily opened reader per file, in registration order.
+    ///
+    /// The callback receives the zero-based file index, including for empty
+    /// files. Each reader is dropped before the next is opened. Readers must
+    /// return exactly the registered file size. A single 32 KiB frame spans
+    /// file boundaries, preserving solid compression for every codec.
+    ///
+    /// Output positioning and partial-output error handling match [`Self::write`].
+    pub fn write_from_readers<'r, W: Write + Seek>(
+        &self,
+        output: &mut W,
+        open: &mut impl FnMut(usize) -> io::Result<Box<dyn Read + 'r>>,
+    ) -> io::Result<u64> {
         let compression = self.compression.bits()?;
         let mut encoder = Encoder::new(self.compression)?;
         let start = output.stream_position()?;
@@ -190,7 +240,7 @@ impl<'a> CabinetBuilder<'a> {
         header[42..44].copy_from_slice(&compression.to_le_bytes());
         output.write_all(&header)?;
         for file in &self.files {
-            output.write_all(&(file.data.len() as u32).to_le_bytes())?;
+            output.write_all(&file.size.to_le_bytes())?;
             output.write_all(&file.offset.to_le_bytes())?;
             output.write_all(&0u16.to_le_bytes())?; // Folder index.
             output.write_all(&file.dos_date.to_le_bytes())?;
@@ -199,24 +249,39 @@ impl<'a> CabinetBuilder<'a> {
             output.write_all(file.name.as_bytes())?;
             output.write_all(&[0])?;
         }
-        let mut frame = Vec::with_capacity(FRAME_SIZE);
+        let mut frame = [0; FRAME_SIZE];
+        let mut filled = 0;
         let mut count = 0u16;
         let mut size = data_offset;
-        for file in &self.files {
-            let mut remaining = file.data;
-            while !remaining.is_empty() {
-                let take = remaining.len().min(FRAME_SIZE - frame.len());
-                frame.extend_from_slice(&remaining[..take]);
-                remaining = &remaining[take..];
-                if frame.len() == FRAME_SIZE {
+        for (index, file) in self.files.iter().enumerate() {
+            let mut source = open(index)?;
+            let mut remaining = u64::from(file.size);
+            while remaining != 0 {
+                let available = remaining.min((FRAME_SIZE - filled) as u64) as usize;
+                let n = read_retry(&mut *source, &mut frame[filled..filled + available])?;
+                if n == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "CAB source is shorter than its declared size",
+                    ));
+                }
+                filled += n;
+                remaining -= n as u64;
+                if filled == FRAME_SIZE {
                     size += encoder.write_frame(&frame, output, size)?;
                     count += 1;
-                    frame.clear();
+                    filled = 0;
                 }
             }
+            if read_retry(&mut *source, &mut [0; 1])? != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "CAB source exceeds its declared size",
+                ));
+            }
         }
-        if !frame.is_empty() {
-            size += encoder.write_frame(&frame, output, size)?;
+        if filled != 0 {
+            size += encoder.write_frame(&frame[..filled], output, size)?;
             count += 1;
         }
         let end = output.stream_position()?;
@@ -227,6 +292,28 @@ impl<'a> CabinetBuilder<'a> {
         output.seek(SeekFrom::Start(end))?;
         Ok(size)
     }
+}
+
+fn read_retry(source: &mut dyn Read, output: &mut [u8]) -> io::Result<usize> {
+    loop {
+        match source.read(output) {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            result => return result,
+        }
+    }
+}
+fn validate_metadata(dos_date: u16, dos_time: u16, attributes: u16) -> io::Result<()> {
+    if attributes & !0xa7 != 0
+        || dos_date & 31 == 0
+        || (dos_date >> 5) & 15 == 0
+        || (dos_date >> 5) & 15 > 12
+        || dos_time & 31 > 29
+        || (dos_time >> 5) & 63 > 59
+        || dos_time >> 11 > 23
+    {
+        return Err(invalid("invalid CAB file metadata"));
+    }
+    Ok(())
 }
 
 enum Encoder {

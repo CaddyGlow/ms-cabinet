@@ -6,12 +6,6 @@ on:
   pull_request:
     paths-ignore: ['**/*.md', 'docs/**']
   workflow_call:
-    inputs:
-      ms-compress-sha:
-        description: Exact dependency commit resolved by the release workflow
-        required: false
-        type: string
-        default: ''
 concurrency:
   group: ${{ github.workflow }}-checks-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -30,11 +24,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cabinet
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ inputs.ms-compress-sha || vars.MS_COMPRESS_REF }}
-          path: ms-compress
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt, clippy
@@ -58,11 +47,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: cabinet
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ vars.MS_COMPRESS_REPOSITORY || format('{0}/ms-compress', github.repository_owner) }}
-          ref: ${{ inputs.ms-compress-sha || vars.MS_COMPRESS_REF }}
-          path: ms-compress
       - uses: dtolnay/rust-toolchain@1.99.0
       - uses: Swatinem/rust-cache@v2
         with:

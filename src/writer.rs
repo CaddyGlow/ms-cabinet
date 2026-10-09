@@ -66,6 +66,8 @@ struct File<'a> {
 /// deterministic DOS timestamps (1980-01-01) by default; explicit metadata can
 /// retain DOS modification dates and read-only/hidden/system/archive attributes.
 /// Names use UTF-8.
+/// Member table entries and payloads preserve registration order. The duplicate
+/// name index owns normalized name strings; payload bytes remain borrowed.
 /// Cabinet signing and splitting into spanning sets are not supported.
 pub struct CabinetBuilder<'a> {
     compression: WriteCompression,
@@ -197,6 +199,10 @@ impl<'a> CabinetBuilder<'a> {
     /// The header is patched using seeking; success leaves the cursor at the
     /// end of the cabinet. Existing trailing output is not truncated. Pass a new
     /// file or empty cursor when producing a standalone archive.
+    /// Success includes all frame writes and header patching, but does not flush
+    /// the destination or finalize, synchronize, or publish caller-owned storage.
+    /// Callers must perform those operations and check their errors themselves.
+    /// No completion work is deferred to dropping the builder.
     ///
     /// # Errors
     /// Returns configuration, format-size, codec, or underlying I/O errors.
@@ -221,6 +227,9 @@ impl<'a> CabinetBuilder<'a> {
     /// file boundaries, preserving solid compression for every codec.
     ///
     /// Output positioning and partial-output error handling match [`Self::write`].
+    /// Short output writes are retried with `write_all`; source-open, read,
+    /// destination-write and seek errors propagate to the caller. Source readers
+    /// may borrow caller-owned bytes for the lifetime of this call.
     pub fn write_from_readers<'r, W: Write + Seek>(
         &self,
         output: &mut W,

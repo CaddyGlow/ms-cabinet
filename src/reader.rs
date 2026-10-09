@@ -532,6 +532,10 @@ impl<R: Read + Seek> Cabinet<R> {
 
     /// Read one member into memory, rejecting its declared size before decoding
     /// if it exceeds `limit`. Short decoded data is an error, never a valid file.
+    /// The limit bounds returned member bytes, not total heap use: cabinet
+    /// metadata, compressed frames, decoding history and allocation overhead
+    /// remain separate. Earlier solid-folder blocks may need decoding even when
+    /// the requested member is small. Use [`Self::read_file`] to stream output.
     pub fn read_file_bytes(&mut self, name: &str, limit: usize) -> io::Result<Vec<u8>> {
         let entry = self.entry(name).ok_or_else(|| {
             io::Error::new(

@@ -159,6 +159,10 @@ the remaining platform and publishing gates.
 
 ## Publication
 
+The [MSI media integration audit](docs/msi-media-integration-audit.md) documents
+borrowed inputs, completion and I/O contracts, retained workspace, and stored
+cabinet compatibility. MSI tables and media grouping remain consumer concerns.
+
 The crates.io package is `ms-cabinet`; the Rust library name remains `cabinet`.
 Use `cabinet = { package = "ms-cabinet", version = "0.1.0" }`.
 The repository is https://github.com/CaddyGlow/ms-cabinet.
